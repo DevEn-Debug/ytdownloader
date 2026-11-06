@@ -200,6 +200,7 @@ async function saveDir() {
     flash('dirmsg', 'Cartella salvata');
   }
 }
+$('dir').placeholder = /Win/i.test(navigator.platform) ? 'C:\\Video' : '/home/utente/Video';
 $('dir').onchange = saveDir;
 $('dir').onkeydown = (e) => {
   if (e.key === 'Enter') $('dir').blur();
@@ -210,7 +211,8 @@ $('browse').onclick = async () => {
   flash('dirmsg', 'Scegli la cartella nella finestra di Windows…', 0);
   const r = await api('POST', '/api/pick-folder');
   $('browse').disabled = false;
-  flash('dirmsg', r.canceled ? 'Nessuna modifica' : 'Cartella salvata');
+  if (r.error) flash('dirmsg', r.error, 8000);
+  else flash('dirmsg', r.canceled ? 'Nessuna modifica' : 'Cartella salvata');
 };
 
 connect();

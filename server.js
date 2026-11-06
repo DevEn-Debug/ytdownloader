@@ -1,13 +1,24 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const { ensureDeps } = require('./lib/ensure-deps');
+const {
+  isWin,
+  userDataHome,
+  pickFolder,
+  openFolder,
+  openUI,
+  killTree,
+  minimizeConsole,
+  DETACH_CHILDREN,
+} = require('./lib/platform');
 
-// Quando gira come .exe (Node SEA) i file della pagina sono incorporati nell'eseguibile
-// e i dati dell'utente vivono in %APPDATA%; da sorgente restano nella cartella del progetto.
+// Quando gira come eseguibile (Node SEA) i file della pagina sono incorporati nel binario
+// e i dati dell'utente vivono nella cartella dati del sistema (%APPDATA% su Windows,
+// ~/.local/share su Linux); da sorgente restano nella cartella del progetto.
 const sea = (() => {
   try {
     return require('node:sea');
@@ -21,7 +32,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = '127.0.0.1';
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const APP_DATA = PACKAGED ? path.join(process.env.APPDATA || os.homedir(), 'YT Downloader') : ROOT;
+const APP_DATA = PACKAGED ? path.join(userDataHome(), 'YT Downloader') : ROOT;
 const DEFAULT_DOWNLOAD_DIR =
   process.env.DOWNLOAD_DIR ||
   (PACKAGED ? path.join(os.homedir(), 'Videos', 'YT Downloader') : path.join(ROOT, 'downloads'));
@@ -49,32 +60,6 @@ function saveSettings() {
   } catch (e) {
     console.error('Impossibile salvare le impostazioni:', e.message);
   }
-}
-
-// Apre il selettore di cartelle nativo di Windows (il server gira sul PC locale).
-function pickFolder(startDir) {
-  return new Promise((resolve) => {
-    if (process.platform !== 'win32') return resolve(null);
-    const script = [
-      '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
-      'Add-Type -AssemblyName System.Windows.Forms',
-      '$f = New-Object System.Windows.Forms.FolderBrowserDialog',
-      "$f.Description = 'Scegli la cartella di destinazione dei download'",
-      '$f.ShowNewFolderButton = $true',
-      'if ($env:YTDL_START -and (Test-Path -LiteralPath $env:YTDL_START)) { $f.SelectedPath = $env:YTDL_START }',
-      '$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }',
-      "if ($f.ShowDialog($owner) -eq 'OK') { Write-Output $f.SelectedPath }",
-    ].join('; ');
-    const p = spawn('powershell', ['-NoProfile', '-STA', '-Command', script], {
-      env: { ...process.env, YTDL_START: startDir || '' },
-      windowsHide: false,
-    });
-    let out = '';
-    p.stdout.setEncoding('utf8');
-    p.stdout.on('data', (d) => (out += d));
-    p.on('error', () => resolve(null));
-    p.on('close', () => resolve(out.trim() || null));
-  });
 }
 
 // ---------------------------------------------------------------- stato coda
@@ -165,15 +150,6 @@ function pumpMeta() {
   });
 }
 
-function killTree(proc) {
-  if (!proc || proc.killed) return;
-  if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true });
-  } else {
-    proc.kill('SIGTERM');
-  }
-}
-
 function startItem(item) {
   const dir = item.dir || settings.downloadDir;
   try {
@@ -202,7 +178,7 @@ function startItem(item) {
     item.url,
   ];
 
-  const proc = spawn('yt-dlp', args, { windowsHide: true });
+  const proc = spawn('yt-dlp', args, { windowsHide: true, detached: DETACH_CHILDREN });
   current = { item, proc, canceled: false };
   const ctx = current;
   let lastErr = '';
@@ -435,7 +411,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const dir = body.dir || settings.downloadDir;
     fs.mkdirSync(dir, { recursive: true });
-    if (process.platform === 'win32') spawn('explorer', [dir], { detached: true, stdio: 'ignore' }).unref();
+    openFolder(dir);
     return json(res, 200, { ok: true });
   }
 
@@ -444,7 +420,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const dir = String(body.downloadDir || '').trim();
     if (!dir || !path.isAbsolute(dir)) {
-      return json(res, 400, { error: 'Inserisci un percorso assoluto (es. D:\\Video)' });
+      return json(res, 400, { error: `Inserisci un percorso assoluto (es. ${isWin ? 'D:\\Video' : '/home/utente/Video'})` });
     }
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -460,8 +436,9 @@ async function handleApi(req, res, url) {
   // Apre il selettore nativo e, se l'utente conferma, imposta la cartella globale.
   if (req.method === 'POST' && action === 'pick-folder') {
     const picked = await pickFolder(settings.downloadDir);
-    if (!picked) return json(res, 200, { canceled: true });
-    settings.downloadDir = path.normalize(picked);
+    if (picked.error) return json(res, 200, { error: picked.error });
+    if (picked.canceled) return json(res, 200, { canceled: true });
+    settings.downloadDir = path.normalize(picked.path);
     saveSettings();
     changed();
     return json(res, 200, { ok: true, downloadDir: settings.downloadDir });
@@ -509,53 +486,19 @@ function serveStatic(req, res, url) {
   });
 }
 
-// Apre l'interfaccia come finestra "app" (senza barra degli indirizzi) con Edge o Chrome;
-// se non li trova usa il browser predefinito.
-function openUI(addr) {
-  if (process.platform !== 'win32' || process.env.NO_OPEN) return;
-  const roots = [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA].filter(Boolean);
-  const rels = [
-    ['Microsoft', 'Edge', 'Application', 'msedge.exe'],
-    ['Google', 'Chrome', 'Application', 'chrome.exe'],
-  ];
-  for (const rel of rels) {
-    for (const r of roots) {
-      const exe = path.join(r, ...rel);
-      if (fs.existsSync(exe)) {
-        spawn(exe, [`--app=${addr}`, '--window-size=860,760'], { detached: true, stdio: 'ignore' }).unref();
-        return;
-      }
-    }
-  }
-  spawn('cmd', ['/c', 'start', '', addr], { detached: true, stdio: 'ignore' }).unref();
-}
-
-// Da .exe: a setup finito riduce a icona la finestra della console (resta nella barra delle applicazioni).
-// Si risale alla finestra "proprietaria" perché con Windows Terminal la console è ospitata da un'altra finestra.
-function minimizeConsole() {
-  if (!PACKAGED || process.platform !== 'win32' || process.env.NO_OPEN) return;
-  const script = [
-    "Add-Type -Namespace W -Name N -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow(); [DllImport(\"user32.dll\")] public static extern IntPtr GetAncestor(IntPtr h, uint f); [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int c);'",
-    '$h = [W.N]::GetConsoleWindow()',
-    'if ($h -ne [IntPtr]::Zero) { $o = [W.N]::GetAncestor($h, 3); if ($o -ne [IntPtr]::Zero) { $h = $o }; [void][W.N]::ShowWindow($h, 7) }',
-  ].join('; ');
-  // niente windowsHide: il processo figlio deve restare agganciato alla stessa console
-  spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: 'ignore' }).unref();
-}
-
-// Errore fatale: da .exe la console si chiuderebbe subito, quindi la teniamo aperta per leggere il messaggio.
+// Errore fatale: da .exe su Windows la console si chiuderebbe subito, quindi la teniamo aperta per leggere il messaggio.
 function fatal(message) {
   console.error(`\n${message}`);
-  if (!PACKAGED) process.exit(1);
+  if (!(PACKAGED && isWin)) process.exit(1);
   console.error('\nPremi Invio per chiudere.');
   process.stdin.resume();
   process.stdin.once('data', () => process.exit(1));
 }
 
-function main() {
+async function main() {
   if (PACKAGED) process.title = 'YT Downloader';
   try {
-    ensureDeps();
+    await ensureDeps();
   } catch (e) {
     return fatal(`[setup] ${e.message}`);
   }
@@ -598,12 +541,12 @@ function main() {
     console.log(`\nYT Downloader pronto su ${addr}`);
     console.log(`Cartella download: ${settings.downloadDir}`);
     console.log(
-      PACKAGED
+      PACKAGED && isWin
         ? "Questa finestra si riduce a icona: per fermare l'app chiudila dalla barra delle applicazioni.\n"
         : "Premi Ctrl+C per fermare l'app.\n"
     );
     openUI(addr);
-    setTimeout(minimizeConsole, 2000);
+    if (PACKAGED) setTimeout(minimizeConsole, 2000);
   });
 
   const shutdown = () => {
@@ -618,4 +561,4 @@ function main() {
   process.on('SIGTERM', shutdown);
 }
 
-main();
+main().catch((e) => fatal(e.message));
