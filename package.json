@@ -1,0 +1,25 @@
+{
+  "name": "ytdownloader",
+  "version": "1.0.0",
+  "description": "Piccolo manager di coda per scaricare video YouTube con yt-dlp",
+  "private": true,
+  "license": "MIT",
+  "author": "DevEn-Debug",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DevEn-Debug/ytdownloader.git"
+  },
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "node scripts/build-exe.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
+    "rcedit": "^5.0.2"
+  }
+}

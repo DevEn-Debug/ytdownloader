@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>YT Downloader</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <header class="bar">
+    <a class="brand" href="/" aria-label="YT Downloader">
+      <img src="/logo.svg" alt="" width="28" height="28">
+      <span>YT Downloader</span>
+    </a>
+    <span id="counts" class="counts"></span>
+  </header>
+
+  <section class="panel" aria-label="Aggiungi video">
+    <div class="field">
+      <label for="dir">Salva in</label>
+      <input id="dir" type="text" spellcheck="false" placeholder="C:\Video">
+      <button id="browse" class="icon" data-icon="folder-search" data-text="Sfoglia" data-label="Scegli un'altra cartella"></button>
+      <button id="folder" class="icon ghost" data-icon="external-link" data-text="Apri" data-label="Apri la cartella in Esplora file"></button>
+    </div>
+    <div class="compose">
+      <input id="urls" type="text" spellcheck="false" autocomplete="off" aria-label="Link del video" placeholder="Incolla il link del video e premi Invio">
+      <button id="add" class="icon primary" data-icon="plus" data-text="Aggiungi" data-label="Aggiungi alla coda"></button>
+    </div>
+    <p class="notes" aria-live="polite"><span id="dirmsg"></span><span id="msg"></span></p>
+  </section>
+
+  <div class="toolbar">
+    <button id="toggle" class="icon primary" data-icon="play" data-text="Avvia coda" data-label="Avvia coda"></button>
+    <button id="clear" class="icon ghost" data-icon="brush-cleaning" data-text="Pulisci completati" data-label="Rimuove dalla lista i video completati e annullati"></button>
+  </div>
+
+  <ul id="list"></ul>
+  <p id="empty" class="empty">Nessun video in coda.</p>
+</main>
+<script src="/icons.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
