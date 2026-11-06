@@ -34,10 +34,10 @@
 ### Opzione 1: file `.exe` (consigliata)
 
 1. Vai alla pagina delle [**Releases**](../../releases/latest) e scarica `YT-Downloader.exe`.
-2. Fai doppio clic. Si apre una finestra con l'app e una console che resta in background.
+2. Fai doppio clic. Si apre una finestra con l'app e una console che mostra i controlli iniziali; a controlli finiti la console si riduce a icona nella barra delle applicazioni.
 3. Al primo avvio, se mancano `yt-dlp` o `ffmpeg`, li installa da solo (serve `winget`, già presente su Windows 10/11 aggiornati). Può chiedere conferma per l'installazione.
 
-Per chiudere l'app, chiudi la finestra della console.
+Per chiudere l'app, chiudi la finestra della console ridotta a icona (clic destro sull'icona nella barra delle applicazioni, poi *Chiudi finestra*).
 
 > **Windows mostra "Windows ha protetto il PC"?** L'eseguibile non è firmato digitalmente. Clicca su **Maggiori informazioni** e poi su **Esegui comunque**.
 

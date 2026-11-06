@@ -88,7 +88,9 @@ function updateRow(li, it) {
   r.dir.textContent = it.dir || '';
   r.dir.title = 'Apri cartella';
   r.dir.onclick = () => api('POST', '/api/open-folder', { dir: it.dir });
-  r.dir.onkeydown = (e) => e.key === 'Enter' && r.dir.click();
+  r.dir.onkeydown = (e) => {
+    if (e.key === 'Enter') r.dir.click();
+  };
   r.err.textContent = it.status === 'error' ? it.error : '';
   r.stat.textContent = statText(it);
   li.style.setProperty('--p', `${it.status === 'downloading' ? it.percent || 0 : 0}%`);
@@ -177,7 +179,11 @@ $('add').onclick = async () => {
   flash('msg', `Aggiunti ${r.added || 0}` + (skipped ? `, scartati ${skipped}` : ''));
 };
 
-$('urls').onkeydown = (e) => e.key === 'Enter' && $('add').click();
+// Attenzione: un gestore onkeydown che restituisce `false` blocca la scrittura e le scorciatoie (Ctrl+V...).
+// Per questo si usa `if`, mai `&&` come valore di ritorno.
+$('urls').onkeydown = (e) => {
+  if (e.key === 'Enter') $('add').click();
+};
 
 $('toggle').onclick = () => api('POST', state.running ? '/api/pause' : '/api/start');
 $('folder').onclick = () => api('POST', '/api/open-folder', {});
@@ -195,7 +201,9 @@ async function saveDir() {
   }
 }
 $('dir').onchange = saveDir;
-$('dir').onkeydown = (e) => e.key === 'Enter' && $('dir').blur();
+$('dir').onkeydown = (e) => {
+  if (e.key === 'Enter') $('dir').blur();
+};
 
 $('browse').onclick = async () => {
   $('browse').disabled = true;

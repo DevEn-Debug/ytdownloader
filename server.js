@@ -530,6 +530,19 @@ function openUI(addr) {
   spawn('cmd', ['/c', 'start', '', addr], { detached: true, stdio: 'ignore' }).unref();
 }
 
+// Da .exe: a setup finito riduce a icona la finestra della console (resta nella barra delle applicazioni).
+// Si risale alla finestra "proprietaria" perché con Windows Terminal la console è ospitata da un'altra finestra.
+function minimizeConsole() {
+  if (!PACKAGED || process.platform !== 'win32' || process.env.NO_OPEN) return;
+  const script = [
+    "Add-Type -Namespace W -Name N -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow(); [DllImport(\"user32.dll\")] public static extern IntPtr GetAncestor(IntPtr h, uint f); [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int c);'",
+    '$h = [W.N]::GetConsoleWindow()',
+    'if ($h -ne [IntPtr]::Zero) { $o = [W.N]::GetAncestor($h, 3); if ($o -ne [IntPtr]::Zero) { $h = $o }; [void][W.N]::ShowWindow($h, 7) }',
+  ].join('; ');
+  // niente windowsHide: il processo figlio deve restare agganciato alla stessa console
+  spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: 'ignore' }).unref();
+}
+
 // Errore fatale: da .exe la console si chiuderebbe subito, quindi la teniamo aperta per leggere il messaggio.
 function fatal(message) {
   console.error(`\n${message}`);
@@ -540,6 +553,7 @@ function fatal(message) {
 }
 
 function main() {
+  if (PACKAGED) process.title = 'YT Downloader';
   try {
     ensureDeps();
   } catch (e) {
@@ -583,8 +597,13 @@ function main() {
   server.listen(PORT, HOST, () => {
     console.log(`\nYT Downloader pronto su ${addr}`);
     console.log(`Cartella download: ${settings.downloadDir}`);
-    console.log('Chiudi questa finestra per fermare l\'app.\n');
+    console.log(
+      PACKAGED
+        ? "Questa finestra si riduce a icona: per fermare l'app chiudila dalla barra delle applicazioni.\n"
+        : "Premi Ctrl+C per fermare l'app.\n"
+    );
     openUI(addr);
+    setTimeout(minimizeConsole, 2000);
   });
 
   const shutdown = () => {

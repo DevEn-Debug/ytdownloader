@@ -1,6 +1,6 @@
 {
   "name": "ytdownloader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Piccolo manager di coda per scaricare video YouTube con yt-dlp",
   "private": true,
   "license": "MIT",
